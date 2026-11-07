@@ -1,0 +1,208 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider             = "prisma-client-py"
+  recursive_type_depth = 5
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  password_hash String
+  name          String
+  role          UserRole  @default(OWNER)
+  business_id   Int?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  business      Business? @relation(fields: [business_id], references: [id])
+  ai_chats      AIChat[]
+  documents     Document[] @relation("DocumentUploader")
+
+  @@map("users")
+}
+
+model Business {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  owner_id    Int
+  created_at  DateTime @default(now())
+
+  users             User[]
+  products          Product[]
+  customers         Customer[]
+  sales             Sale[]
+  documents         Document[]
+  categories        Category[]
+  inventory_records Inventory[]
+  churn_predictions ChurnPrediction[]
+
+  @@map("businesses")
+}
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  name            String
+  email           String?
+  phone           String?
+  address         String?
+  total_spending  Float    @default(0)
+  purchase_count  Int      @default(0)
+  avg_order_value Float    @default(0)
+  last_purchase   DateTime?
+  business_id     Int
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  business          Business          @relation(fields: [business_id], references: [id])
+  sales             Sale[]
+  churn_predictions ChurnPrediction[]
+
+  @@map("customers")
+}
+
+model Document {
+  id                Int      @id @default(autoincrement())
+  filename          String
+  original_filename String
+  content           String?
+  doc_type          String   @default("general")
+  file_size         Int?
+  chunk_count       Int      @default(0)
+  business_id       Int
+  uploaded_by       Int
+  created_at        DateTime @default(now())
+
+  business Business @relation(fields: [business_id], references: [id])
+  uploader User     @relation("DocumentUploader", fields: [uploaded_by], references: [id])
+
+  @@map("documents")
+}
+
+model AIChat {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  title      String   @default("New Chat")
+  messages   String?  // JSON string
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("ai_chats")
+}
+
+model ChurnPrediction {
+  id                  Int      @id @default(autoincrement())
+  customer_id         Int
+  risk_score          Int
+  risk_level          String
+  reasons             String?  // JSON string
+  recommended_actions String?  // JSON string
+  business_id         Int
+  created_at          DateTime @default(now())
+
+  customer Customer @relation(fields: [customer_id], references: [id])
+  business Business @relation(fields: [business_id], references: [id])
+
+  @@unique([customer_id])
+  @@map("churn_predictions")
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  business_id Int
+  created_at  DateTime @default(now())
+
+  business Business  @relation(fields: [business_id], references: [id])
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  sku         String   @unique
+  description String?
+  price       Float
+  cost        Float    @default(0)
+  category_id Int?
+  business_id Int
+  is_active   Boolean  @default(true)
+  image_url   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  category   Category?  @relation(fields: [category_id], references: [id])
+  business   Business   @relation(fields: [business_id], references: [id])
+  inventory  Inventory?
+  sale_items SaleItem[]
+
+  @@map("products")
+}
+
+model Inventory {
+  id                  Int      @id @default(autoincrement())
+  product_id          Int      @unique
+  quantity            Int      @default(0)
+  low_stock_threshold Int      @default(10)
+  business_id         Int
+  last_restocked      DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  product  Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [business_id], references: [id])
+
+  @@map("inventory")
+}
+
+model Sale {
+  id           Int        @id @default(autoincrement())
+  customer_id  Int?
+  total_amount Float      @default(0)
+  status       SaleStatus @default(COMPLETED)
+  notes        String?
+  business_id  Int
+  created_at   DateTime   @default(now())
+
+  customer Customer?  @relation(fields: [customer_id], references: [id])
+  business Business   @relation(fields: [business_id], references: [id])
+  items    SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id         Int   @id @default(autoincrement())
+  sale_id    Int
+  product_id Int
+  quantity   Int
+  unit_price Float
+  total      Float
+
+  sale    Sale    @relation(fields: [sale_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@map("sale_items")
+}
